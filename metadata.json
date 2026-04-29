@@ -1,0 +1,5 @@
+{
+  "name": "OddsMate - Poker Equity Calculator",
+  "description": "Professional Texas Hold'em equity calculator with real-time AR camera scanning and TV-broadcast style overlays.",
+  "requestFramePermissions": ["camera"]
+}
