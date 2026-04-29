@@ -124,6 +124,103 @@ export function evaluateHand(cards: Card[]): EvaluationResult {
   return { handRank: HandRank.HIGH_CARD, score };
 }
 
+const RANK_NAME_PLURAL: Record<Rank, string> = {
+  '2': 'Twos', '3': 'Threes', '4': 'Fours', '5': 'Fives', '6': 'Sixes',
+  '7': 'Sevens', '8': 'Eights', '9': 'Nines', 'T': 'Tens', 'J': 'Jacks',
+  'Q': 'Queens', 'K': 'Kings', 'A': 'Aces'
+};
+
+const RANK_NAME_SINGLE: Record<Rank, string> = {
+  '2': 'Two', '3': 'Three', '4': 'Four', '5': 'Five', '6': 'Six',
+  '7': 'Seven', '8': 'Eight', '9': 'Nine', 'T': 'Ten',
+  'J': 'Jack', 'Q': 'Queen', 'K': 'King', 'A': 'Ace'
+};
+
+const RANK_BY_VALUE: Record<number, Rank> = {
+  2: '2', 3: '3', 4: '4', 5: '5', 6: '6', 7: '7', 8: '8',
+  9: '9', 10: 'T', 11: 'J', 12: 'Q', 13: 'K', 14: 'A'
+};
+
+export function getHandLabel(cards: Card[]): string {
+  if (cards.length < 2) return '';
+
+  const sorted = [...cards].sort((a, b) => RANK_VALUE[b.rank] - RANK_VALUE[a.rank]);
+  const ranks = sorted.map(c => RANK_VALUE[c.rank]);
+
+  const rankCounts: Record<number, number> = {};
+  ranks.forEach(r => rankCounts[r] = (rankCounts[r] || 0) + 1);
+
+  const suitCounts: Record<string, number> = {};
+  sorted.forEach(c => suitCounts[c.suit] = (suitCounts[c.suit] || 0) + 1);
+
+  const flushSuit = Object.keys(suitCounts).find(s => suitCounts[s] >= 5);
+
+  const uniqueRanks = Array.from(new Set(ranks)).sort((a, b) => b - a);
+  let straightHigh = -1;
+  for (let i = 0; i <= uniqueRanks.length - 5; i++) {
+    if (uniqueRanks[i] - uniqueRanks[i + 4] === 4) {
+      straightHigh = uniqueRanks[i];
+      break;
+    }
+  }
+  if (straightHigh === -1 && [14, 5, 4, 3, 2].every(r => uniqueRanks.includes(r))) {
+    straightHigh = 5;
+  }
+
+  if (flushSuit) {
+    const flushCards = sorted.filter(c => c.suit === flushSuit);
+    const flushRanks = flushCards.map(c => RANK_VALUE[c.rank]);
+    const uniqueFlushRanks = Array.from(new Set(flushRanks)).sort((a, b) => b - a);
+    let sfHigh = -1;
+    for (let i = 0; i <= uniqueFlushRanks.length - 5; i++) {
+      if (uniqueFlushRanks[i] - uniqueFlushRanks[i + 4] === 4) {
+        sfHigh = uniqueFlushRanks[i];
+        break;
+      }
+    }
+    if (sfHigh === -1 && [14, 5, 4, 3, 2].every(r => uniqueFlushRanks.includes(r))) sfHigh = 5;
+    if (sfHigh !== -1) {
+      return sfHigh === 14 ? 'Royal Flush' : 'Straight Flush';
+    }
+  }
+
+  const counts = Object.entries(rankCounts)
+    .map(([rank, count]) => ({ rank: parseInt(rank), count }))
+    .sort((a, b) => b.count - a.count || b.rank - a.rank);
+
+  if (counts[0].count === 4) {
+    return `Four ${RANK_NAME_PLURAL[RANK_BY_VALUE[counts[0].rank]]}`;
+  }
+  if (counts[0].count === 3 && counts[1]?.count >= 2) {
+    return `Full House, ${RANK_NAME_PLURAL[RANK_BY_VALUE[counts[0].rank]]} Full of ${RANK_NAME_PLURAL[RANK_BY_VALUE[counts[1].rank]]}`;
+  }
+  if (flushSuit) return 'Flush';
+  if (straightHigh !== -1) {
+    return `${RANK_NAME_SINGLE[RANK_BY_VALUE[straightHigh]]}-High Straight`;
+  }
+  if (counts[0].count === 3) {
+    return `Trip ${RANK_NAME_PLURAL[RANK_BY_VALUE[counts[0].rank]]}`;
+  }
+  if (counts[0].count === 2 && counts[1]?.count === 2) {
+    return `Two Pair, ${RANK_NAME_PLURAL[RANK_BY_VALUE[counts[0].rank]]} & ${RANK_NAME_PLURAL[RANK_BY_VALUE[counts[1].rank]]}`;
+  }
+  if (counts[0].count === 2) {
+    return `Pair of ${RANK_NAME_PLURAL[RANK_BY_VALUE[counts[0].rank]]}`;
+  }
+  return `${RANK_NAME_SINGLE[RANK_BY_VALUE[ranks[0]]]} High`;
+}
+
+export function getBestHandInfo(
+  holeCards: Card[],
+  board: Card[]
+): { handRank: HandRank; label: string; score: number } | null {
+  const validHole = holeCards.filter((c): c is Card => c !== null);
+  if (validHole.length < 2) return null;
+  const allCards = [...validHole, ...board.filter((c): c is Card => c !== null)];
+  const result = evaluateHand(allCards);
+  return { ...result, label: getHandLabel(allCards) };
+}
+
 /**
  * Calculates winning probabilities.
  * Uses exhaustive enumeration for Flop and Turn, and Monte Carlo for Pre-flop.
