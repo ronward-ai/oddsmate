@@ -1,10 +1,10 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Card, PlayerHand, Rank, Suit, SUIT_SYMBOLS, SUIT_COLORS } from '../types';
-import { Camera, X, RefreshCw, Scan, Zap } from 'lucide-react';
+import { X, RefreshCw, Scan, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { getHandLabel } from '../utils/pokerEngine';
-import { BroadcastHUD, type HUDHand } from './BroadcastHUD';
+import { BroadcastHUD, type HUDHand, LANDSCAPE_HUD_WIDTH } from './BroadcastHUD';
 
 interface CameraScannerProps {
   onScan: (board: (Card | null)[], hands: PlayerHand[]) => void;
@@ -30,6 +30,17 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
   const [autoScan, setAutoScan] = useState(false);
   const [detectedHands, setDetectedHands] = useState<DetectedHand[]>([]);
   const [hudVisible, setHudVisible] = useState(false);
+  const [hudCollapsed, setHudCollapsed] = useState(false);
+  const [isLandscape, setIsLandscape] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(orientation: landscape)').matches
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia('(orientation: landscape)');
+    const handler = (e: MediaQueryListEvent) => setIsLandscape(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, []);
 
   const startCamera = async () => {
     try {
@@ -284,10 +295,14 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
           </div>
         )}
 
-        {/* Scan button — floats above the HUD panel */}
+        {/* Scan button — landscape: bottom-centre of camera area; portrait: above HUD */}
         <div
-          className="absolute left-0 right-0 flex justify-center items-center pointer-events-auto transition-all duration-300"
-          style={{ bottom: hudVisible ? `${Math.min(hands_height(hudHands), 240) + 24}px` : '40px' }}
+          className="absolute flex justify-center items-center pointer-events-auto transition-all duration-300"
+          style={{
+            bottom: isLandscape ? '24px' : hudVisible && !hudCollapsed ? `${Math.min(portrait_hud_height(hudHands), 240) + 24}px` : '40px',
+            left: 0,
+            right: isLandscape && hudVisible && !hudCollapsed ? LANDSCAPE_HUD_WIDTH : 0,
+          }}
         >
           <button
             onClick={performScan}
@@ -302,8 +317,12 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
 
         {/* Error message */}
         {error && (
-          <div className="absolute left-4 right-4 p-3 bg-red-900/80 backdrop-blur-md border border-red-500 rounded-xl text-white text-sm text-center"
-            style={{ bottom: hudVisible ? `${Math.min(hands_height(hudHands), 240) + 88}px` : '112px' }}
+          <div
+            className="absolute left-4 p-3 bg-red-900/80 backdrop-blur-md border border-red-500 rounded-xl text-white text-sm text-center"
+            style={{
+              right: isLandscape && hudVisible && !hudCollapsed ? LANDSCAPE_HUD_WIDTH + 16 : 16,
+              bottom: isLandscape ? '100px' : hudVisible && !hudCollapsed ? `${Math.min(portrait_hud_height(hudHands), 240) + 88}px` : '112px',
+            }}
           >
             {error}
           </div>
@@ -314,15 +333,17 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
           hands={hudHands}
           board={currentBoard}
           isVisible={hudVisible}
+          isLandscape={isLandscape}
+          collapsed={hudCollapsed}
+          onToggleCollapse={() => setHudCollapsed(c => !c)}
         />
       </div>
     </motion.div>
   );
 };
 
-function hands_height(hands: HUDHand[]): number {
-  // Approximate HUD panel height in px based on number of hands
-  const headerHeight = 28;
+function portrait_hud_height(hands: HUDHand[]): number {
+  const headerHeight = 32;
   const rowHeight = hands.length > 3 ? 40 : 48;
   return headerHeight + hands.length * rowHeight;
 }
