@@ -26,7 +26,7 @@ app.post('/api/analyze', async (req, res) => {
   try {
     const ai = new GoogleGenAI({ apiKey });
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-preview-05-20',
+      model: 'gemini-2.0-flash',
       contents: [
         {
           parts: [
@@ -104,8 +104,10 @@ Only include cards you can clearly identify. Do not guess.`
 
     res.json(result);
   } catch (err: any) {
-    console.error('Gemini analyze error:', err?.message ?? err);
-    res.status(500).json({ error: 'Card recognition failed' });
+    const msg = err?.message ?? String(err);
+    const status = err?.status ?? err?.httpStatus ?? '';
+    console.error(`Gemini error [${status}]: ${msg}`);
+    res.status(500).json({ error: 'Card recognition failed', detail: msg });
   }
 });
 
