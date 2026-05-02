@@ -1,10 +1,9 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import { Card, PlayerHand, Rank, Suit, SUIT_SYMBOLS, SUIT_COLORS } from '../types';
+import { Card, PlayerHand, Rank, Suit } from '../types';
 import { X, RefreshCw, Scan, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../utils/cn';
 import { getHandLabel } from '../utils/pokerEngine';
-import { BroadcastHUD, type HUDHand, LANDSCAPE_HUD_WIDTH } from './BroadcastHUD';
 
 interface CameraScannerProps {
   onScan: (board: (Card | null)[], hands: PlayerHand[]) => void;
@@ -29,18 +28,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
   const [error, setError] = useState<string | null>(null);
   const [autoScan, setAutoScan] = useState(false);
   const [detectedHands, setDetectedHands] = useState<DetectedHand[]>([]);
-  const [hudVisible, setHudVisible] = useState(false);
-  const [hudCollapsed, setHudCollapsed] = useState(false);
-  const [isLandscape, setIsLandscape] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(orientation: landscape)').matches
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia('(orientation: landscape)');
-    const handler = (e: MediaQueryListEvent) => setIsLandscape(e.matches);
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
+  const [overlaysVisible, setOverlaysVisible] = useState(false);
 
   const startCamera = async () => {
     try {
@@ -115,9 +103,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
       if (result.hands) {
         result.hands.forEach((detectedHand: any, i: number) => {
           const cards: (Card | null)[] = [null, null];
-          let sumX = 0;
-          let sumY = 0;
-          let count = 0;
+          let sumX = 0, sumY = 0, count = 0;
 
           detectedHand.cards.forEach((c: any, j: number) => {
             if (j < 2) {
@@ -135,17 +121,13 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
           } else if (newHands.length < 10) {
             newHands.push({
               id: Math.random().toString(36).substr(2, 9),
-              cards,
-              winProbability: 0,
-              isFolded: false,
+              cards, winProbability: 0, isFolded: false,
             });
           }
 
           const handId = i < newHands.length ? newHands[i].id : null;
           const holeCards = cards.filter((c): c is Card => c !== null);
-          const handLabel = holeCards.length >= 2
-            ? getHandLabel([...holeCards, ...boardCards])
-            : '';
+          const handLabel = holeCards.length >= 2 ? getHandLabel([...holeCards, ...boardCards]) : '';
 
           if (handId) {
             newDetectedHands.push({
@@ -160,7 +142,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
       }
 
       setDetectedHands(newDetectedHands);
-      setHudVisible(true);
+      setOverlaysVisible(true);
       onScan(newBoard, newHands);
       setError(null);
     } catch (err) {
@@ -171,7 +153,7 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
     }
   }, [isScanning, onScan, currentHands]);
 
-  // Sync win probabilities back into detectedHands from parent state
+  // Sync win probabilities and hand labels back from parent state
   useEffect(() => {
     setDetectedHands(prev => prev.map(dh => {
       const match = currentHands.find(h => h.id === dh.id);
@@ -193,13 +175,9 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
     return () => clearInterval(interval);
   }, [autoScan, isStreaming, performScan]);
 
-  // Build HUDHand array from detectedHands
-  const hudHands: HUDHand[] = detectedHands.map(dh => ({
-    id: dh.id,
-    cards: dh.cards,
-    winProbability: dh.winProbability,
-    handLabel: dh.handLabel,
-  }));
+  const maxProb = detectedHands.length > 0
+    ? Math.max(...detectedHands.map(h => h.winProbability))
+    : 0;
 
   return (
     <motion.div
@@ -209,57 +187,86 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
       className="fixed inset-0 z-50 bg-black flex flex-col"
     >
       <div className="relative flex-1 overflow-hidden">
-        <video
-          ref={videoRef}
-          autoPlay
-          playsInline
-          className="w-full h-full object-cover"
-        />
+        <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
         <canvas ref={canvasRef} className="hidden" />
 
-        {/* AR badges — secondary layer over detected hand positions */}
+        {/* TV broadcast overlays anchored to detected hand positions */}
         <div className="absolute inset-0 pointer-events-none">
           <AnimatePresence>
-            {detectedHands.map(dh => dh.center && (
-              <motion.div
-                key={`ar-${dh.id}`}
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                exit={{ scale: 0, opacity: 0 }}
-                style={{
-                  left: `${dh.center.x}%`,
-                  top: `${dh.center.y}%`,
-                  transform: 'translate(-50%, -100%)',
-                }}
-                className="absolute"
-              >
-                <div className="bg-black/80 border-2 border-om-red rounded-xl px-2.5 py-1.5 flex items-center gap-2 shadow-2xl">
-                  <div className="flex gap-0.5">
-                    {dh.cards.map((card, i) => (
-                      <div key={i} className={cn(
-                        'w-6 h-8 rounded flex flex-col items-center justify-center text-[8px] font-black leading-none',
-                        card ? 'bg-white' : 'bg-zinc-800 border border-zinc-700'
-                      )}>
-                        {card && (
-                          <span className={cn('flex flex-col items-center', SUIT_COLORS[card.suit])}>
-                            <span>{card.rank}</span>
-                            <span>{SUIT_SYMBOLS[card.suit]}</span>
-                          </span>
-                        )}
+            {overlaysVisible && detectedHands.map((dh, idx) => {
+              if (!dh.center) return null;
+              const isLeader = dh.winProbability === maxProb && dh.winProbability > 0;
+              const pct = dh.winProbability;
+
+              return (
+                <motion.div
+                  key={`ar-${dh.id}`}
+                  initial={{ scale: 0.8, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.8, opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+                  style={{
+                    left: `${dh.center.x}%`,
+                    top: `${dh.center.y}%`,
+                    transform: 'translate(-50%, -100%)',
+                    width: 180,
+                  }}
+                  className="absolute"
+                >
+                  {/* Overlay card */}
+                  <div className="flex rounded-xl overflow-hidden shadow-[0_8px_32px_rgba(0,0,0,0.8)]">
+                    {/* Coloured accent bar */}
+                    <div className={cn(
+                      'w-1.5 flex-shrink-0',
+                      isLeader ? 'bg-emerald-500' : pct > 25 ? 'bg-om-red' : 'bg-zinc-600'
+                    )} />
+
+                    {/* Content */}
+                    <div className="flex-1 bg-black/88 backdrop-blur-sm px-3 py-2 space-y-1">
+                      {/* Row 1: player label + win % */}
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-[9px] font-black uppercase tracking-widest text-zinc-500 mt-1">
+                          P{idx + 1}
+                        </span>
+                        <motion.span
+                          key={pct}
+                          initial={{ opacity: 0.6 }}
+                          animate={{ opacity: 1 }}
+                          className={cn(
+                            'text-4xl font-[900] tabular-nums tracking-tighter leading-none',
+                            isLeader ? 'text-emerald-400' :
+                            pct > 25 ? 'text-amber-400' : 'text-zinc-500'
+                          )}
+                        >
+                          {pct.toFixed(1)}%
+                        </motion.span>
                       </div>
-                    ))}
+
+                      {/* Row 2: hand label */}
+                      <div className="text-[11px] font-black uppercase tracking-wide text-white leading-tight truncate">
+                        {dh.handLabel || '—'}
+                      </div>
+
+                      {/* Row 3: equity bar */}
+                      <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                        <motion.div
+                          className={cn(
+                            'h-full rounded-full',
+                            isLeader ? 'bg-emerald-500' : pct > 25 ? 'bg-amber-500' : 'bg-zinc-600'
+                          )}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.6, ease: 'easeOut' }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <span className={cn(
-                    'text-lg font-[900] tabular-nums tracking-tighter',
-                    dh.winProbability > 50 ? 'text-emerald-400' :
-                    dh.winProbability > 25 ? 'text-amber-400' : 'text-zinc-400'
-                  )}>
-                    {dh.winProbability.toFixed(0)}%
-                  </span>
-                </div>
-                <div className="w-0.5 h-4 bg-gradient-to-b from-om-red to-transparent mx-auto" />
-              </motion.div>
-            ))}
+
+                  {/* Connector line to card position */}
+                  <div className="w-px h-5 bg-gradient-to-b from-zinc-400/60 to-transparent mx-auto" />
+                </motion.div>
+              );
+            })}
           </AnimatePresence>
         </div>
 
@@ -295,15 +302,8 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
           </div>
         )}
 
-        {/* Scan button — landscape: bottom-centre of camera area; portrait: above HUD */}
-        <div
-          className="absolute flex justify-center items-center pointer-events-auto transition-all duration-300"
-          style={{
-            bottom: isLandscape ? '24px' : hudVisible && !hudCollapsed ? `${Math.min(portrait_hud_height(hudHands), 240) + 24}px` : '40px',
-            left: 0,
-            right: isLandscape && hudVisible && !hudCollapsed ? LANDSCAPE_HUD_WIDTH : 0,
-          }}
-        >
+        {/* Scan button */}
+        <div className="absolute bottom-10 left-0 right-0 flex justify-center pointer-events-auto">
           <button
             onClick={performScan}
             disabled={isScanning}
@@ -317,33 +317,11 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
 
         {/* Error message */}
         {error && (
-          <div
-            className="absolute left-4 p-3 bg-red-900/80 backdrop-blur-md border border-red-500 rounded-xl text-white text-sm text-center"
-            style={{
-              right: isLandscape && hudVisible && !hudCollapsed ? LANDSCAPE_HUD_WIDTH + 16 : 16,
-              bottom: isLandscape ? '100px' : hudVisible && !hudCollapsed ? `${Math.min(portrait_hud_height(hudHands), 240) + 88}px` : '112px',
-            }}
-          >
+          <div className="absolute bottom-32 left-4 right-4 p-3 bg-red-900/80 backdrop-blur-md border border-red-500 rounded-xl text-white text-sm text-center">
             {error}
           </div>
         )}
-
-        {/* WSOP Broadcast HUD */}
-        <BroadcastHUD
-          hands={hudHands}
-          board={currentBoard}
-          isVisible={hudVisible}
-          isLandscape={isLandscape}
-          collapsed={hudCollapsed}
-          onToggleCollapse={() => setHudCollapsed(c => !c)}
-        />
       </div>
     </motion.div>
   );
 };
-
-function portrait_hud_height(hands: HUDHand[]): number {
-  const headerHeight = 32;
-  const rowHeight = hands.length > 3 ? 40 : 48;
-  return headerHeight + hands.length * rowHeight;
-}
