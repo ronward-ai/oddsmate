@@ -65,14 +65,14 @@ export const CameraScanner: React.FC<CameraScannerProps> = ({ onScan, onClose, c
     if (!videoRef.current || !canvasRef.current) return null;
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    const maxDim = 768;
+    const maxDim = 1024;
     const scale = Math.min(maxDim / video.videoWidth, maxDim / video.videoHeight, 1);
     canvas.width = Math.round(video.videoWidth * scale);
     canvas.height = Math.round(video.videoHeight * scale);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+    return canvas.toDataURL('image/jpeg', 0.85).split(',')[1];
   };
 
   const performScan = useCallback(async () => {
