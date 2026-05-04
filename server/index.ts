@@ -34,23 +34,30 @@ app.post('/api/analyze', async (req, res) => {
               inlineData: { mimeType: 'image/jpeg', data: imageBase64 }
             },
             {
-              text: `You are analyzing a poker table image. Identify every visible playing card with high accuracy.
+              text: `You are a professional poker card recognition system. Carefully examine this poker table image and identify ALL visible playing cards.
 
-1. BOARD: Find the community cards (3-5 cards) laid face-up in the center of the table.
-2. HANDS: Find all player hole cards (pairs of 2 cards face-up near each player position).
+TASK 1 — BOARD: Locate the community cards (face-up cards in the center/middle of the table). There may be 0, 3, 4, or 5 board cards.
 
-For EVERY card you can see, identify:
-- rank: one of 2,3,4,5,6,7,8,9,T,J,Q,K,A
-- suit: one of h (hearts), d (diamonds), c (clubs), s (spades)
-- box_2d: bounding box [ymin, xmin, ymax, xmax] in 0-1000 normalized coordinates
+TASK 2 — HANDS: Locate every player's hole cards (pairs of face-up cards near player seats around the table edge). Count every visible pair.
 
-Be thorough — if there are 4 players, return 4 hand objects each with 2 cards.
-Only include cards you can clearly identify. Do not guess.`
+For each card return:
+- rank: exactly one of: 2 3 4 5 6 7 8 9 T J Q K A
+- suit: exactly one of: h (hearts ♥) d (diamonds ♦) c (clubs ♣) s (spades ♠)
+- box_2d: bounding box [ymin, xmin, ymax, xmax] in 0–1000 normalised coordinates
+
+RULES:
+- Identify every card you can see, including partially visible ones
+- Use pip count and suit symbol/colour to determine rank and suit
+- Red cards = hearts or diamonds; black cards = clubs or spades
+- Be confident — commit to your best reading of each card
+- If you see 6 players, return 6 hand objects
+- Return an empty array for board or hands only if truly none are visible`
             }
           ]
         }
       ],
       config: {
+        temperature: 0,
         responseMimeType: 'application/json',
         responseSchema: {
           type: Type.OBJECT,
@@ -64,7 +71,7 @@ Only include cards you can clearly identify. Do not guess.`
                   suit: { type: Type.STRING },
                   box_2d: { type: Type.ARRAY, items: { type: Type.NUMBER } }
                 },
-                required: ['rank', 'suit', 'box_2d']
+                required: ['rank', 'suit']
               }
             },
             hands: {
@@ -81,7 +88,7 @@ Only include cards you can clearly identify. Do not guess.`
                         suit: { type: Type.STRING },
                         box_2d: { type: Type.ARRAY, items: { type: Type.NUMBER } }
                       },
-                      required: ['rank', 'suit', 'box_2d']
+                      required: ['rank', 'suit']
                     }
                   }
                 },
